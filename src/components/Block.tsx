@@ -3,7 +3,7 @@ import type { BlockData } from '../types';
 
 interface BlockProps {
   block: BlockData;
-  onClick: (x: number, y: number) => void;
+  onClick: () => void;
 }
 
 export const Block: React.FC<BlockProps> = ({ block, onClick }) => {
@@ -28,7 +28,7 @@ export const Block: React.FC<BlockProps> = ({ block, onClick }) => {
   return (
     <div 
       className={className} 
-      onClick={() => onClick(block.x, block.y)}
+      onClick={onClick}
     >
       <span className="face">{face}</span>
     </div>

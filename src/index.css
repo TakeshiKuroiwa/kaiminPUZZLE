@@ -124,6 +124,28 @@ body {
   animation: popOut 0.3s forwards;
 }
 
+/* Ripple / circular light effect when a block is removed */
+.block.removing::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%) scale(0.1);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.7) 20%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0) 70%);
+  pointer-events: none;
+  z-index: 8;
+  animation: ripple 0.45s ease-out forwards;
+}
+
+@keyframes ripple {
+  0% { transform: translate(-50%, -50%) scale(0.1); opacity: 1; }
+  40% { transform: translate(-50%, -50%) scale(1.4); opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(6); opacity: 0; }
+}
+
 .block.falling {
   /* Let React handle position logic, just animate the transition if needed, 
      but typical grid doesn't animate position well without extra libs like Framer Motion. 

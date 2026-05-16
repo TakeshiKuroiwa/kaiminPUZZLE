@@ -18,12 +18,12 @@ export const Board: React.FC<BoardProps> = ({ board, onBlockClick }) => {
         gridTemplateRows: `repeat(${BOARD_ROWS}, 1fr)`,
       }}
     >
-      {board.map((row) => 
-        row.map((block) => (
+      {board.map((row, y) => 
+        row.map((block, x) => (
           <Block 
             key={block.id} 
             block={block} 
-            onClick={onBlockClick} 
+            onClick={() => onBlockClick(x, y)} 
           />
         ))
       )}
