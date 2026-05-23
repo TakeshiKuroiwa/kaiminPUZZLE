@@ -1,26 +1,46 @@
 # KaiminPUZZLE 🐑
 
-## ユーザー向け — 概要
+## ゲーム概要
 
-KaiminPUZZLE は、かわいい羊「kaiminちゃん」が登場するシンプルで爽快な Match-2 パズルゲームです。
+KaiminPUZZLE は、かわいい羊「kaimin」が登場する Match-2 形式のパズルゲームです。
 
-- 操作: ブロックをクリックして同色の隣接ブロックを消す
-- 特殊ブロック: `kaimin`（周囲3x3消去）、`rainbow`（任意同色として扱う）
-- コンボ / Dream Time: 連鎖でスコア増加、5コンボで Dream Time（スコア2倍）
-- ビジュアル: 消去時に円形のリップル（光）エフェクト
+### 主な特徴
+
+- タイトル画面で難易度を選択できる
+  - `EASY`：`kaimin` パネル 5 枚以上、`rainbow` パネル 5 枚以上
+  - `NORMAL`：`kaimin`、`rainbow` それぞれ 4 枚以下、かつ特殊パネル合計 6 枚以上
+  - `HARD`：`kaimin` 1 枚、`rainbow` 1 枚
+  - `VERY HARD`：特殊パネルなし
+- 結果画面でプレイヤーネーム入力とランキング登録が可能
+- プレイヤーネーム入力をスキップするとランキング登録されない
+- `VERY HARD` に近いほど得点倍率が高くなる難易度優遇
+- クリア時は残りパネル 1 枚ごとに 200 ポイント減算
+- 全消しクリア時は最終得点が 2 倍になり、`kaimin` がダンスアニメーションを表示
+
+### 特殊パネルの動作
+
+- `kaimin` パネルは自分自身をクリックしないと消えない
+- クリックした `kaimin` は周囲 2 マスまでの 5x5 範囲のパネルを消去する
+- 他の `kaimin` の消去には影響されない
+- `rainbow` パネルは任意の色として扱えるが、
+  - 2 枚以上の同色パネルと合わせて 3 枚以上でなければ消せない
+
+## 画面フロー
+
+1. タイトル画面
+2. ゲーム画面
+3. 結果画面
+
+結果画面では、プレイヤーネームを登録するかスキップし、ランキングを確認した後にタイトル画面へ戻れます。
 
 ## オンラインでプレイ
 
-**今すぐブラウザでプレイ:** https://takeshikuroiwa.github.io/kaiminPUZZLE/
+**ブラウザでプレイ:** https://takeshikuroiwa.github.io/kaiminPUZZLE/
 
-ローカルでセットアップして遊びたい場合は、下記の開発者向けセクションを参照してください。
-
-## 開発者向け — セットアップ & 貢献
+## 開発者向けセットアップ
 
 必要条件:
 - Node.js (推奨: 18+) と npm
-
-ローカルセットアップ:
 
 ```bash
 git clone https://github.com/TakeshiKuroiwa/kaiminPUZZLE.git
@@ -35,35 +55,31 @@ npm run dev
 npm run build
 ```
 
-主要ファイル:
-- `src/hooks/useBoard.ts` — ゲームロジック（クリック処理、スコア、コンボ）
-- `src/utils/boardUtils.ts` — マッチ検出、重力、列シフト
-- `src/components/Board.tsx`, `src/components/Block.tsx` — UI とクリック伝播
+## 主要ファイル
 
-開発のポイント:
-- ブロックの見た目と内部 `x,y` がずれるとクリック位置がずれるため、レンダリングインデックス（map の `x,y`）をクリック座標として渡す実装にしています。
-- 消去アニメーション中の入力抑止や追加の視覚フィードバックは今後の改善候補です。
+- `src/hooks/useBoard.ts` — ゲーム進行、スコア計算、難易度管理
+- `src/utils/boardUtils.ts` — ボード生成、マッチ検出、重力処理、移動判定
+- `src/components/Board.tsx`, `src/components/Block.tsx` — ブロック表示とクリック処理
+- `src/App.tsx` — タイトル画面 / ゲーム画面 / 結果画面の画面遷移
 
-## GitHub Pages への配備（手動）
+## GitHub Pages 配備
 
-このリポジトリを GitHub にプッシュし、GitHub Pages で公開する簡単な方法は `dist` を `docs/` にコピーして `main` ブランチの `docs` を Pages のソースに指定する方法です。
+このリポジトリは GitHub Pages で公開されています。ビルド済みファイルを `docs/` フォルダに配置して `master` ブランチの `docs/` をページソースに指定しています。
 
-手順:
+手動で更新する手順:
 
 ```bash
 npm run build
 rm -rf docs
 cp -r dist docs
 git add docs
-git commit -m "chore: deploy docs for GitHub Pages"
-git push origin main
-# GitHub のリポジトリ Settings → Pages で Source を 'main' ブランチの /docs に設定
+git add README.md src package.json
+git commit -m "docs: update README and deploy GitHub Pages"
+git push origin master
 ```
 
-自動化したい場合は `gh-pages` パッケージや GitHub Actions を使った自動デプロイを追加できます。
+GitHub Pages への反映は、`docs/` フォルダを `master` ブランチにプッシュするだけです。
 
 ## 貢献
-- バグ報告・改善提案・プルリク歓迎。Issue を立ててください。
 
----
-（README はユーザー向けの概要と開発者向けの手順を分けて記載しています）
+バグ報告や機能改善提案、プルリクエストは歓迎です。Issue を作成してください。

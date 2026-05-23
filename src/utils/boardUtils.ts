@@ -1,4 +1,4 @@
-import type { BlockData, BoardData, BlockColor } from '../types';
+import type { BlockData, BoardData, BlockColor, Difficulty } from '../types';
 
 export const BOARD_ROWS = 12;
 export const BOARD_COLS = 10;
@@ -8,25 +8,23 @@ const COLORS: BlockColor[] = ['red', 'blue', 'yellow', 'green', 'purple'];
 // Random ID generator
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
-export const generateBoard = (rows: number = BOARD_ROWS, cols: number = BOARD_COLS): BoardData => {
+const isValidPos = (x: number, y: number, rows: number, cols: number) => {
+  return x >= 0 && x < cols && y >= 0 && y < rows;
+};
+
+const getRandomInt = (min: number, max: number) => {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+};
+
+const createEmptyBoard = (rows: number, cols: number): BoardData => {
   const board: BoardData = [];
   for (let y = 0; y < rows; y++) {
     const row: BlockData[] = [];
     for (let x = 0; x < cols; x++) {
-      const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-      // Determine type based on probability
-      let type: BlockType = 'normal';
-      const rand = Math.random();
-      if (rand < 0.03) {
-        type = 'kaimin'; // 3% chance
-      } else if (rand < 0.05) {
-        type = 'rainbow'; // 2% chance
-      }
-
       row.push({
         id: generateId(),
-        type,
-        color,
+        type: 'normal',
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
         x,
         y,
         isFalling: false,
@@ -39,12 +37,123 @@ export const generateBoard = (rows: number = BOARD_ROWS, cols: number = BOARD_CO
   return board;
 };
 
-// Check if coordinates are valid
-const isValidPos = (x: number, y: number, rows: number, cols: number) => {
-  return x >= 0 && x < cols && y >= 0 && y < rows;
+const assignSpecials = (board: BoardData, type: 'kaimin' | 'rainbow', count: number) => {
+  const positions: {x:number;y:number}[] = [];
+  const rows = board.length;
+  const cols = board[0].length;
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      positions.push({x, y});
+    }
+  }
+  for (let i = positions.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [positions[i], positions[j]] = [positions[j], positions[i]];
+  }
+
+  let assigned = 0;
+  for (const pos of positions) {
+    if (assigned >= count) break;
+    const block = board[pos.y][pos.x];
+    if (block.type === 'normal') {
+      block.type = type;
+      assigned += 1;
+    }
+  }
 };
 
-// Flood fill to find adjacent blocks of the same color
+const validateMatch = (board: BoardData, matches: {x:number;y:number}[]) => {
+  const normalPieces = matches.filter(pos => board[pos.y][pos.x].type !== 'rainbow');
+  const hasRainbow = matches.some(pos => board[pos.y][pos.x].type === 'rainbow');
+
+  if (hasRainbow) {
+    return normalPieces.length >= 2 && matches.length >= 3;
+  }
+  return matches.length >= 2;
+};
+
+const floodFillMatches = (board: BoardData, startX: number, startY: number, targetColor: BlockColor) => {
+  const rows = board.length;
+  const cols = board[0].length;
+  const visited = new Set<string>();
+  const matches: {x:number;y:number}[] = [];
+  const queue: {x:number;y:number}[] = [{x: startX, y: startY}];
+
+  visited.add(`${startX},${startY}`);
+
+  while (queue.length > 0) {
+    const {x, y} = queue.shift()!;
+    const block = board[y][x];
+    if (block.isEmpty || block.isRemoving || block.type === 'kaimin') continue;
+    if (block.type !== 'rainbow' && block.color !== targetColor) continue;
+
+    matches.push({x, y});
+
+    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    for (const [dx, dy] of dirs) {
+      const nx = x + dx;
+      const ny = y + dy;
+      const key = `${nx},${ny}`;
+      if (isValidPos(nx, ny, rows, cols) && !visited.has(key)) {
+        const neighbor = board[ny][nx];
+        if (neighbor.isEmpty || neighbor.isRemoving || neighbor.type === 'kaimin') continue;
+        if (neighbor.type === 'rainbow' || neighbor.color === targetColor) {
+          visited.add(key);
+          queue.push({x: nx, y: ny});
+        }
+      }
+    }
+  }
+
+  return matches;
+};
+
+export const generateBoard = (
+  rows: number = BOARD_ROWS,
+  cols: number = BOARD_COLS,
+  difficulty: Difficulty = 'easy'
+): BoardData => {
+  let board = createEmptyBoard(rows, cols);
+
+  const makeBoard = () => {
+    board = createEmptyBoard(rows, cols);
+    if (difficulty === 'veryhard') {
+      return;
+    }
+
+    if (difficulty === 'hard') {
+      assignSpecials(board, 'kaimin', 1);
+      assignSpecials(board, 'rainbow', 1);
+      return;
+    }
+
+    if (difficulty === 'normal') {
+      const kaiminCount = getRandomInt(1, 4);
+      const remainingMin = Math.max(1, 6 - kaiminCount);
+      const rainbowCount = getRandomInt(remainingMin, Math.min(4, 6 - kaiminCount + 3));
+      assignSpecials(board, 'kaimin', kaiminCount);
+      assignSpecials(board, 'rainbow', rainbowCount);
+      return;
+    }
+
+    const kaiminCount = getRandomInt(5, 8);
+    const rainbowCount = getRandomInt(5, 8);
+    assignSpecials(board, 'kaimin', kaiminCount);
+    assignSpecials(board, 'rainbow', rainbowCount);
+  };
+
+  makeBoard();
+
+  let attempts = 0;
+  while (!hasValidMoves(board) && attempts < 50) {
+    makeBoard();
+    attempts += 1;
+  }
+
+  return board;
+};
+
 export const findMatches = (board: BoardData, startX: number, startY: number): {x: number, y: number}[] => {
   const rows = board.length;
   const cols = board[0].length;
@@ -52,54 +161,40 @@ export const findMatches = (board: BoardData, startX: number, startY: number): {
 
   if (startBlock.isEmpty || startBlock.isRemoving) return [];
 
-  const targetColor = startBlock.color;
-  // If we clicked a kaimin block, return surrounding area or special effect
   if (startBlock.type === 'kaimin') {
-      // Example: 3x3 explosion
-      const matches: {x:number, y:number}[] = [];
-      for(let dy=-1; dy<=1; dy++) {
-          for(let dx=-1; dx<=1; dx++) {
-              if (isValidPos(startX+dx, startY+dy, rows, cols)) {
-                  matches.push({x: startX+dx, y: startY+dy});
-              }
-          }
-      }
-      return matches;
-  }
-
-  // Normal flood fill for Match-2
-  const visited = new Set<string>();
-  const matches: {x: number, y: number}[] = [];
-  const queue: {x: number, y: number}[] = [{x: startX, y: startY}];
-
-  visited.add(`${startX},${startY}`);
-
-  while (queue.length > 0) {
-    const {x, y} = queue.shift()!;
-    matches.push({x, y});
-
-    // Check 4 directions
-    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-    for (const [dx, dy] of dirs) {
-      const nx = x + dx;
-      const ny = y + dy;
-
-      if (isValidPos(nx, ny, rows, cols)) {
+    const matches: {x:number;y:number}[] = [];
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = startX + dx;
+        const ny = startY + dy;
+        if (!isValidPos(nx, ny, rows, cols)) continue;
+        if (dx === 0 && dy === 0) {
+          matches.push({x: nx, y: ny});
+          continue;
+        }
         const neighbor = board[ny][nx];
-        const key = `${nx},${ny}`;
-        if (!visited.has(key) && !neighbor.isEmpty && !neighbor.isRemoving) {
-           if (neighbor.color === targetColor || neighbor.type === 'rainbow') {
-               visited.add(key);
-               queue.push({x: nx, y: ny});
-           }
+        if (neighbor.type !== 'kaimin') {
+          matches.push({x: nx, y: ny});
         }
       }
     }
+    return matches;
   }
 
-  // Return empty if only 1 block is matched (Match-2 rule)
-  if (matches.length < 2 && startBlock.type === 'normal') {
-      return [];
+  if (startBlock.type === 'rainbow') {
+    let bestMatch: {x:number;y:number}[] = [];
+    for (const color of COLORS) {
+      const group = floodFillMatches(board, startX, startY, color);
+      if (validateMatch(board, group) && group.length > bestMatch.length) {
+        bestMatch = group;
+      }
+    }
+    return bestMatch;
+  }
+
+  const matches = floodFillMatches(board, startX, startY, startBlock.color);
+  if (!validateMatch(board, matches)) {
+    return [];
   }
 
   return matches;
@@ -108,55 +203,46 @@ export const findMatches = (board: BoardData, startX: number, startY: number): {
 export const applyGravityAndShift = (board: BoardData): { newBoard: BoardData, hasChanged: boolean } => {
   const rows = board.length;
   const cols = board[0].length;
-  // Deep copy the board to avoid mutating the original directly in react state transitions
   const newBoard: BoardData = board.map(row => row.map(block => ({...block})));
   let hasChanged = false;
 
-  // 1. Gravity: Pull blocks down
   for (let x = 0; x < cols; x++) {
     let emptyCount = 0;
-    // Iterate from bottom to top
     for (let y = rows - 1; y >= 0; y--) {
       if (newBoard[y][x].isEmpty) {
         emptyCount++;
       } else if (emptyCount > 0) {
-        // Move block down by emptyCount
         newBoard[y + emptyCount][x] = { ...newBoard[y][x], y: y + emptyCount, isFalling: true };
-        // Empty the old position
         newBoard[y][x] = {
-            id: generateId(), type: 'empty', color: 'none', x, y, isFalling: false, isRemoving: false, isEmpty: true
+          id: generateId(), type: 'empty', color: 'none', x, y, isFalling: false, isRemoving: false, isEmpty: true
         };
         hasChanged = true;
       } else {
-         newBoard[y][x].isFalling = false;
+        newBoard[y][x].isFalling = false;
       }
     }
   }
 
-  // 2. Shift columns to left if there's an empty column
   let emptyColsShift = 0;
   for (let x = 0; x < cols; x++) {
-      // Check if current column is completely empty
-      let isColEmpty = true;
+    let isColEmpty = true;
+    for (let y = 0; y < rows; y++) {
+      if (!newBoard[y][x].isEmpty) {
+        isColEmpty = false;
+        break;
+      }
+    }
+    if (isColEmpty) {
+      emptyColsShift++;
+    } else if (emptyColsShift > 0) {
       for (let y = 0; y < rows; y++) {
-          if (!newBoard[y][x].isEmpty) {
-              isColEmpty = false;
-              break;
-          }
+        newBoard[y][x - emptyColsShift] = { ...newBoard[y][x], x: x - emptyColsShift, isFalling: true };
+        newBoard[y][x] = {
+          id: generateId(), type: 'empty', color: 'none', x, y, isFalling: false, isRemoving: false, isEmpty: true
+        };
       }
-
-      if (isColEmpty) {
-          emptyColsShift++;
-      } else if (emptyColsShift > 0) {
-          // Shift this entire column to the left by emptyColsShift
-          for(let y = 0; y < rows; y++) {
-             newBoard[y][x - emptyColsShift] = { ...newBoard[y][x], x: x - emptyColsShift, isFalling: true };
-             newBoard[y][x] = {
-                id: generateId(), type: 'empty', color: 'none', x, y, isFalling: false, isRemoving: false, isEmpty: true
-             };
-          }
-          hasChanged = true;
-      }
+      hasChanged = true;
+    }
   }
 
   return { newBoard, hasChanged };
@@ -170,25 +256,9 @@ export const hasValidMoves = (board: BoardData): boolean => {
     for (let x = 0; x < cols; x++) {
       const block = board[y][x];
       if (block.isEmpty) continue;
-      
-      // kaimin blocks can always be clicked
       if (block.type === 'kaimin') return true;
-
-      // Check right and down for matches (sufficient to find any pair)
-      if (x < cols - 1) {
-        const rightBlock = board[y][x + 1];
-        if (!rightBlock.isEmpty && 
-           (block.color === rightBlock.color || block.type === 'rainbow' || rightBlock.type === 'rainbow')) {
-          return true;
-        }
-      }
-      if (y < rows - 1) {
-        const downBlock = board[y + 1][x];
-        if (!downBlock.isEmpty && 
-           (block.color === downBlock.color || block.type === 'rainbow' || downBlock.type === 'rainbow')) {
-          return true;
-        }
-      }
+      const matches = findMatches(board, x, y);
+      if (matches.length > 0) return true;
     }
   }
   return false;
