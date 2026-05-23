@@ -1,6 +1,15 @@
 export type BlockType = 'normal' | 'kaimin' | 'rainbow' | 'obstacle' | 'empty';
 export type BlockColor = 'red' | 'blue' | 'yellow' | 'green' | 'purple' | 'none';
 
+export type Difficulty = 'easy' | 'normal' | 'hard' | 'veryhard';
+
+export interface RankingEntry {
+  name: string;
+  score: number;
+  date: string;
+  difficulty: Difficulty;
+}
+
 export interface BlockData {
   id: string; // Unique identifier for React key (useful for animations)
   type: BlockType;
