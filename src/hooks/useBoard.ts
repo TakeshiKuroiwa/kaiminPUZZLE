@@ -7,13 +7,11 @@ export const useBoard = () => {
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
   const [status, setStatus] = useState<'playing' | 'clear' | 'gameover'>('playing');
-  const [isDreamTime, setIsDreamTime] = useState(false);
   const [difficulty, setDifficulty] = useState<Difficulty>('easy');
   const comboTimerRef = useRef<number | null>(null);
+  const isDreamTime = combo >= 5;
 
   useEffect(() => {
-    setIsDreamTime(combo >= 5);
-
     if (combo > 0) {
       if (comboTimerRef.current) clearTimeout(comboTimerRef.current);
       comboTimerRef.current = window.setTimeout(() => {
@@ -45,7 +43,6 @@ export const useBoard = () => {
     setScore(0);
     setCombo(0);
     setStatus('playing');
-    setIsDreamTime(false);
   }, []);
 
   const handleBlockClick = useCallback((x: number, y: number) => {
@@ -55,7 +52,7 @@ export const useBoard = () => {
       const matches = findMatches(prevBoard, x, y);
       if (matches.length === 0) return prevBoard;
 
-      let newBoard = prevBoard.map(row => row.map(block => ({ ...block })));
+      const newBoard = prevBoard.map(row => row.map(block => ({ ...block })));
       matches.forEach(pos => {
         newBoard[pos.y][pos.x].isRemoving = true;
       });
@@ -71,7 +68,7 @@ export const useBoard = () => {
 
     setTimeout(() => {
       setBoard((currentBoard) => {
-        let boardAfterRemoval = currentBoard.map(row => row.map(block => ({ ...block })));
+        const boardAfterRemoval = currentBoard.map(row => row.map(block => ({ ...block })));
 
         for (let r = 0; r < boardAfterRemoval.length; r++) {
           for (let c = 0; c < boardAfterRemoval[r].length; c++) {

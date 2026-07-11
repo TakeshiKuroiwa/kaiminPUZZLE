@@ -4,7 +4,6 @@ import { useBoard } from './hooks/useBoard';
 import { Board } from './components/Board';
 import type { Difficulty, RankingEntry } from './types';
 
-const RANKING_KEY = 'kaiminPuzzleRanking';
 const DIFFICULTY_LABELS: Record<Difficulty, string> = {
   easy: 'EASY',
   normal: 'NORMAL',
@@ -22,24 +21,49 @@ function App() {
   const [ranking, setRanking] = useState<RankingEntry[]>([]);
   const [saved, setSaved] = useState(false);
   const [skipped, setSkipped] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [rankingError, setRankingError] = useState('');
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(RANKING_KEY);
-    if (stored) {
+    const level = screen === 'result' ? difficulty : selectedDifficulty;
+    const controller = new AbortController();
+
+    const loadRanking = async () => {
       try {
-        setRanking(JSON.parse(stored));
-      } catch {
+        setRankingError('');
+        const response = await fetch(`/api/rankings?difficulty=${level}`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load rankings');
+        }
+
+        const data = await response.json();
+        setRanking(Array.isArray(data.rankings) ? data.rankings : []);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
         setRanking([]);
+        setRankingError('ランキングを取得できませんでした');
       }
-    }
-  }, []);
+    };
+
+    void loadRanking();
+
+    return () => controller.abort();
+  }, [selectedDifficulty, difficulty, screen]);
 
   useEffect(() => {
     if (status !== 'playing' && screen === 'playing') {
-      setScreen('result');
-      setPlayerName('');
-      setSaved(false);
-      setSkipped(false);
+      const timeoutId = window.setTimeout(() => {
+        setScreen('result');
+        setPlayerName('');
+        setSaved(false);
+        setSkipped(false);
+        setRankingError('');
+      }, 0);
+
+      return () => window.clearTimeout(timeoutId);
     }
   }, [status, screen]);
 
@@ -50,13 +74,31 @@ function App() {
     return status === 'clear' ? deducted * 2 : deducted;
   }, [board, score, status]);
 
-  const saveRanking = (entry: RankingEntry) => {
-    const next = [entry, ...ranking]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 10);
-    window.localStorage.setItem(RANKING_KEY, JSON.stringify(next));
-    setRanking(next);
-    setSaved(true);
+  const saveRanking = async (entry: RankingEntry) => {
+    setIsSaving(true);
+    setRankingError('');
+
+    try {
+      const response = await fetch('/api/rankings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(entry),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save ranking');
+      }
+
+      const data = await response.json();
+      setRanking(Array.isArray(data.rankings) ? data.rankings : []);
+      setSaved(true);
+    } catch {
+      setRankingError('ランキングに登録できませんでした');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleStart = () => {
@@ -65,12 +107,13 @@ function App() {
     setPlayerName('');
     setSaved(false);
     setSkipped(false);
+    setRankingError('');
   };
 
-  const handleSaveResult = () => {
+  const handleSaveResult = async () => {
     const trimmed = playerName.trim();
-    if (!trimmed || saved || skipped) return;
-    saveRanking({
+    if (!trimmed || saved || skipped || isSaving) return;
+    await saveRanking({
       name: trimmed.substring(0, 12),
       score: finalScore,
       date: new Date().toLocaleDateString(),
@@ -88,6 +131,7 @@ function App() {
     setPlayerName('');
     setSaved(false);
     setSkipped(false);
+    setRankingError('');
   };
 
   return (
@@ -164,8 +208,8 @@ function App() {
                 placeholder="名前を入力"
               />
               <div className="result-buttons">
-                <button onClick={handleSaveResult} disabled={!playerName.trim()}>
-                  登録する
+                <button onClick={handleSaveResult} disabled={!playerName.trim() || isSaving}>
+                  {isSaving ? '登録中...' : '登録する'}
                 </button>
                 <button onClick={handleSkip}>スキップ</button>
               </div>
@@ -174,6 +218,7 @@ function App() {
 
           {saved && <p className="saved-text">ランキングに登録しました！</p>}
           {skipped && <p className="skip-text">スキップしました。ランキングには登録されません。</p>}
+          {rankingError && <p className="skip-text">{rankingError}</p>}
 
           <div className="ranking-box">
             <h3>ランキング TOP 10</h3>
