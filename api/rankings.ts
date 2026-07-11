@@ -9,6 +9,18 @@ interface RankingEntry {
   difficulty: Difficulty;
 }
 
+interface ApiRequest {
+  method?: string;
+  query: Record<string, string | string[] | undefined>;
+  body?: unknown;
+}
+
+interface ApiResponse {
+  setHeader(name: string, value: string): void;
+  status(code: number): ApiResponse;
+  json(data: unknown): void;
+}
+
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
 
@@ -35,21 +47,9 @@ function sanitizeName(value: unknown) {
     .slice(0, 12);
 }
 
-function json(data: unknown, init?: ResponseInit) {
-  return Response.json(data, {
-    ...init,
-    headers: {
-      'Cache-Control': 'no-store',
-      ...init?.headers,
-    },
-  });
-}
-
 function parseRankingEntry(value: unknown): RankingEntry | null {
-  if (typeof value !== 'string') return null;
-
   try {
-    const parsed = JSON.parse(value) as RankingEntry;
+    const parsed = typeof value === 'string' ? JSON.parse(value) as RankingEntry : value as RankingEntry;
     if (
       typeof parsed.name === 'string' &&
       typeof parsed.score === 'number' &&
@@ -65,8 +65,18 @@ function parseRankingEntry(value: unknown): RankingEntry | null {
   return null;
 }
 
+function parseBody(body: unknown) {
+  if (typeof body !== 'string') return body;
+
+  try {
+    return JSON.parse(body);
+  } catch {
+    return null;
+  }
+}
+
 async function readRankings(difficulty: Difficulty) {
-  const rawEntries = await redis.zrange<string[]>(
+  const rawEntries = await redis.zrange<unknown[]>(
     `rankings:${difficulty}`,
     0,
     maxVisibleEntries - 1,
@@ -78,21 +88,23 @@ async function readRankings(difficulty: Difficulty) {
     .filter((entry): entry is RankingEntry => entry !== null);
 }
 
-export default async function handler(request: Request) {
-  const url = new URL(request.url);
+export default async function handler(request: ApiRequest, response: ApiResponse) {
+  response.setHeader('Cache-Control', 'no-store');
 
   if (request.method === 'GET') {
-    const difficulty = url.searchParams.get('difficulty');
+    const difficulty = Array.isArray(request.query.difficulty)
+      ? request.query.difficulty[0]
+      : request.query.difficulty;
 
     if (!isDifficulty(difficulty)) {
-      return json({ error: 'Invalid difficulty' }, { status: 400 });
+      return response.status(400).json({ error: 'Invalid difficulty' });
     }
 
-    return json({ rankings: await readRankings(difficulty) });
+    return response.status(200).json({ rankings: await readRankings(difficulty) });
   }
 
   if (request.method === 'POST') {
-    const body = await request.json().catch(() => null);
+    const body = parseBody(request.body) as Partial<RankingEntry> | null;
     const name = sanitizeName(body?.name);
     const score = Number(body?.score);
     const difficulty = body?.difficulty;
@@ -104,7 +116,7 @@ export default async function handler(request: Request) {
       score > 999_999_999 ||
       !isDifficulty(difficulty)
     ) {
-      return json({ error: 'Invalid ranking entry' }, { status: 400 });
+      return response.status(400).json({ error: 'Invalid ranking entry' });
     }
 
     const entry: RankingEntry = {
@@ -121,8 +133,8 @@ export default async function handler(request: Request) {
     });
     await redis.zremrangebyrank(key, 0, -(maxStoredEntries + 1));
 
-    return json({ rankings: await readRankings(difficulty) }, { status: 201 });
+    return response.status(201).json({ rankings: await readRankings(difficulty) });
   }
 
-  return json({ error: 'Method not allowed' }, { status: 405 });
+  return response.status(405).json({ error: 'Method not allowed' });
 }
