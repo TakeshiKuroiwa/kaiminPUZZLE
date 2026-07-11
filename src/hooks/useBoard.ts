@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { BoardData, Difficulty } from '../types';
+import type { BoardData, ClearFeedback, Difficulty } from '../types';
 import { generateBoard, findMatches, applyGravityAndShift, hasValidMoves, isBoardEmpty, BOARD_ROWS, BOARD_COLS } from '../utils/boardUtils';
 
 export const useBoard = () => {
@@ -8,6 +8,8 @@ export const useBoard = () => {
   const [combo, setCombo] = useState(0);
   const [status, setStatus] = useState<'playing' | 'clear' | 'gameover'>('playing');
   const [difficulty, setDifficulty] = useState<Difficulty>('easy');
+  const [clearFeedback, setClearFeedback] = useState<ClearFeedback | null>(null);
+  const [isResolving, setIsResolving] = useState(false);
   const comboTimerRef = useRef<number | null>(null);
   const isDreamTime = combo >= 5;
 
@@ -37,29 +39,61 @@ export const useBoard = () => {
     }
   };
 
+  const getFeedbackLabel = (clearedCount: number, nextCombo: number, isKaiminClear: boolean) => {
+    if (isKaiminClear) return 'KAIMIN BURST';
+    if (clearedCount >= 12) return 'DREAM CRUSH';
+    if (clearedCount >= 8) return 'BIG CLEAR';
+    if (clearedCount >= 4) return 'NICE CLEAR';
+    if (nextCombo >= 3) return 'COMBO UP';
+    return 'CLEAR';
+  };
+
   const startGame = useCallback((newDifficulty: Difficulty) => {
     setDifficulty(newDifficulty);
     setBoard(generateBoard(BOARD_ROWS, BOARD_COLS, newDifficulty));
     setScore(0);
     setCombo(0);
     setStatus('playing');
+    setClearFeedback(null);
+    setIsResolving(false);
   }, []);
 
   const handleBlockClick = useCallback((x: number, y: number) => {
-    if (status !== 'playing') return;
+    if (status !== 'playing' || isResolving) return;
+
+    const matches = findMatches(board, x, y);
+    if (matches.length === 0) return;
+
+    const clickedBlock = board[y][x];
+    const baseScore = matches.length * matches.length * 10;
+    const difficultyMultiplier = getDifficultyMultiplier(difficulty);
+    const earnedScore = Math.round(baseScore * difficultyMultiplier * (isDreamTime ? 2 : 1));
+    const nextCombo = combo + 1;
+    const center = matches.reduce(
+      (acc, pos) => ({ x: acc.x + pos.x, y: acc.y + pos.y }),
+      { x: 0, y: 0 },
+    );
+    const isKaiminClear = clickedBlock.type === 'kaimin';
+
+    setIsResolving(true);
+    setClearFeedback({
+      id: Date.now(),
+      clearedCount: matches.length,
+      earnedScore,
+      combo: nextCombo,
+      isDreamTime,
+      isKaiminClear,
+      label: getFeedbackLabel(matches.length, nextCombo, isKaiminClear),
+      xPercent: ((center.x / matches.length) + 0.5) / BOARD_COLS * 100,
+      yPercent: ((center.y / matches.length) + 0.5) / BOARD_ROWS * 100,
+    });
 
     setBoard((prevBoard) => {
-      const matches = findMatches(prevBoard, x, y);
-      if (matches.length === 0) return prevBoard;
-
       const newBoard = prevBoard.map(row => row.map(block => ({ ...block })));
       matches.forEach(pos => {
         newBoard[pos.y][pos.x].isRemoving = true;
       });
 
-      const baseScore = matches.length * matches.length * 10;
-      const difficultyMultiplier = getDifficultyMultiplier(difficulty);
-      const earnedScore = Math.round(baseScore * difficultyMultiplier * (isDreamTime ? 2 : 1));
       setScore(s => s + earnedScore);
       setCombo(c => c + 1);
 
@@ -98,8 +132,15 @@ export const useBoard = () => {
 
         return newBoard;
       });
-    }, 300);
-  }, [status, isDreamTime, difficulty]);
 
-  return { board, handleBlockClick, score, combo, isDreamTime, status, startGame, difficulty };
+      window.setTimeout(() => {
+        setBoard((settledBoard) =>
+          settledBoard.map(row => row.map(block => ({ ...block, isFalling: false }))),
+        );
+        setIsResolving(false);
+      }, 260);
+    }, 300);
+  }, [board, combo, status, isResolving, isDreamTime, difficulty]);
+
+  return { board, handleBlockClick, score, combo, isDreamTime, status, startGame, difficulty, clearFeedback, isResolving };
 };

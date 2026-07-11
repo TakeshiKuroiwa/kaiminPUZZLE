@@ -14,7 +14,7 @@ const DIFFICULTY_LABELS: Record<Difficulty, string> = {
 const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard', 'veryhard'];
 
 function App() {
-  const { board, handleBlockClick, score, combo, isDreamTime, status, startGame, difficulty } = useBoard();
+  const { board, handleBlockClick, score, combo, isDreamTime, status, startGame, difficulty, clearFeedback, isResolving } = useBoard();
   const [screen, setScreen] = useState<'title' | 'playing' | 'result'>('title');
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty>('easy');
   const [playerName, setPlayerName] = useState('');
@@ -171,11 +171,28 @@ function App() {
               <div className="score">Score: {score}</div>
               <div className={`combo ${combo > 0 ? 'active' : ''}`}>
                 Combo: {combo} {isDreamTime && '✨'}
+                {combo > 0 && <span key={clearFeedback?.id ?? combo} className="combo-window" />}
               </div>
+            </div>
+            <div className={`dream-meter${isDreamTime ? ' active' : ''}`}>
+              <span className="dream-meter-label">
+                {isDreamTime ? 'DREAM TIME' : `Dream Time ${Math.min(combo, 5)}/5`}
+              </span>
+              <span className="dream-meter-track">
+                <span style={{ width: `${Math.min(combo, 5) / 5 * 100}%` }} />
+              </span>
             </div>
           </header>
           <main className="game-area" style={{ position: 'relative' }}>
-            {board.length > 0 && <Board board={board} onBlockClick={handleBlockClick} />}
+            {board.length > 0 && (
+              <Board
+                board={board}
+                onBlockClick={handleBlockClick}
+                feedback={clearFeedback}
+                isDreamTime={isDreamTime}
+                isResolving={isResolving}
+              />
+            )}
           </main>
         </>
       )}

@@ -10,6 +10,18 @@ export interface RankingEntry {
   difficulty: Difficulty;
 }
 
+export interface ClearFeedback {
+  id: number;
+  clearedCount: number;
+  earnedScore: number;
+  combo: number;
+  isDreamTime: boolean;
+  isKaiminClear: boolean;
+  label: string;
+  xPercent: number;
+  yPercent: number;
+}
+
 export interface BlockData {
   id: string; // Unique identifier for React key (useful for animations)
   type: BlockType;
