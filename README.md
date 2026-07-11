@@ -77,8 +77,8 @@ Output Directory: dist
 ランキング機能には以下の環境変数が必要です。
 
 ```txt
-UPSTASH_REDIS_REST_URL
-UPSTASH_REDIS_REST_TOKEN
+KV_REST_API_URL
+KV_REST_API_TOKEN
 ```
 
 ## 貢献
