@@ -75,9 +75,9 @@ function parseBody(body: unknown) {
   }
 }
 
-async function readRankings(difficulty: Difficulty) {
+async function readRankings(difficulty: Difficulty, campaign: boolean) {
   const rawEntries = await redis.zrange<unknown[]>(
-    `rankings:${difficulty}`,
+    `rankings:${campaign ? 'campaign-v1:' : ''}${difficulty}`,
     0,
     maxVisibleEntries - 1,
     { rev: true },
@@ -100,7 +100,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       return response.status(400).json({ error: 'Invalid difficulty' });
     }
 
-    return response.status(200).json({ rankings: await readRankings(difficulty) });
+    return response.status(200).json({ rankings: await readRankings(difficulty, request.query.mode === 'campaign') });
   }
 
   if (request.method === 'POST') {
@@ -125,7 +125,8 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       date: new Date().toISOString(),
       difficulty,
     };
-    const key = `rankings:${difficulty}`;
+    const campaign = (body as Partial<RankingEntry> & { mode?: string } | null)?.mode === 'campaign';
+    const key = `rankings:${campaign ? 'campaign-v1:' : ''}${difficulty}`;
 
     await redis.zadd(key, {
       score: entry.score,
@@ -133,7 +134,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     });
     await redis.zremrangebyrank(key, 0, -(maxStoredEntries + 1));
 
-    return response.status(201).json({ rankings: await readRankings(difficulty) });
+    return response.status(201).json({ rankings: await readRankings(difficulty, campaign) });
   }
 
   return response.status(405).json({ error: 'Method not allowed' });

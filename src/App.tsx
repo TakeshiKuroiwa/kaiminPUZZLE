@@ -11,11 +11,26 @@ const DIFFICULTY_LABELS: Record<Difficulty, string> = {
   veryhard: 'VERY HARD',
 };
 
+const TOTAL_STAGES = 20;
+const SAVE_KEY = 'kaimin-campaign-v1';
+type Progress = { stage: number; total: number; difficulty: Difficulty };
+
+function loadProgress(): Progress | null {
+  try {
+    const data = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (data && Number.isInteger(data.stage) && data.stage >= 1 && data.stage <= TOTAL_STAGES && Number.isFinite(data.total) && data.total >= 0 && DIFFICULTIES.includes(data.difficulty)) return data;
+  } catch { /* Storage may be unavailable or corrupt. */ }
+  return null;
+}
+
 const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard', 'veryhard'];
 
 function App() {
   const { board, handleBlockClick, score, combo, isDreamTime, status, startGame, difficulty, clearFeedback, isResolving } = useBoard();
-  const [screen, setScreen] = useState<'title' | 'playing' | 'result'>('title');
+  const [screen, setScreen] = useState<'title' | 'playing' | 'stage' | 'result'>('title');
+  const [progress, setProgress] = useState<Progress | null>(loadProgress);
+  const [stage, setStage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty>('easy');
   const [playerName, setPlayerName] = useState('');
   const [ranking, setRanking] = useState<RankingEntry[]>([]);
@@ -31,7 +46,7 @@ function App() {
     const loadRanking = async () => {
       try {
         setRankingError('');
-        const response = await fetch(`/api/rankings?difficulty=${level}`, {
+        const response = await fetch(`/api/rankings?mode=campaign&difficulty=${level}`, {
           signal: controller.signal,
         });
 
@@ -56,7 +71,7 @@ function App() {
   useEffect(() => {
     if (status !== 'playing' && screen === 'playing') {
       const timeoutId = window.setTimeout(() => {
-        setScreen('result');
+        setScreen('stage');
         setPlayerName('');
         setSaved(false);
         setSkipped(false);
@@ -84,7 +99,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(entry),
+        body: JSON.stringify({ ...entry, mode: 'campaign' }),
       });
 
       if (!response.ok) {
@@ -102,6 +117,10 @@ function App() {
   };
 
   const handleStart = () => {
+    try { localStorage.removeItem(SAVE_KEY); } catch { /* Continue without saved progress. */ }
+    setProgress(null);
+    setStage(1);
+    setTotal(0);
     startGame(selectedDifficulty);
     setScreen('playing');
     setPlayerName('');
@@ -115,10 +134,46 @@ function App() {
     if (!trimmed || saved || skipped || isSaving) return;
     await saveRanking({
       name: trimmed.substring(0, 12),
-      score: finalScore,
+      score: total + finalScore,
       date: new Date().toLocaleDateString(),
       difficulty,
     });
+  };
+
+  const handleNext = () => {
+    const nextTotal = total + finalScore;
+    if (stage === TOTAL_STAGES) {
+      try { localStorage.removeItem(SAVE_KEY); } catch { /* Storage is optional. */ }
+      setProgress(null);
+      setScreen('result');
+      return;
+    }
+    const next = { stage: stage + 1, total: nextTotal, difficulty };
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(next)); setProgress(next); } catch { /* Play can continue without saved progress. */ }
+    setStage(next.stage);
+    setTotal(next.total);
+    startGame(difficulty);
+    setScreen('playing');
+  };
+
+  const handleSuspend = () => {
+    const next = { stage: stage + 1, total: total + finalScore, difficulty };
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(next));
+      setProgress(next);
+      setScreen('title');
+    } catch {
+      setRankingError('保存できませんでした。ブラウザの保存設定をご確認ください。');
+    }
+  };
+
+  const handleResume = () => {
+    if (!progress) return;
+    setStage(progress.stage);
+    setTotal(progress.total);
+    setSelectedDifficulty(progress.difficulty);
+    startGame(progress.difficulty);
+    setScreen('playing');
   };
 
   const handleSkip = () => {
@@ -156,8 +211,9 @@ function App() {
                 </button>
               ))}
             </div>
+            {progress && <button className="start-button primary" onClick={handleResume}>つづきから（ステージ {progress.stage} / {TOTAL_STAGES}）</button>}
             <button className="start-button primary" onClick={handleStart}>
-              START
+              {progress ? '最初から（保存した続きは削除）' : 'START'}
             </button>
           </div>
         </div>
@@ -168,7 +224,7 @@ function App() {
           <header className="header">
             <h1>kaimin PUZZLE 🐑</h1>
             <div className="score-board">
-              <div className="score">Score: {score}</div>
+              <div className="score">ステージ {stage} / {TOTAL_STAGES} / 累計: {total + score}</div>
               <div className={`combo ${combo > 0 ? 'active' : ''}`}>
                 Combo: {combo} {isDreamTime && '✨'}
                 {combo > 0 && <span key={clearFeedback?.id ?? combo} className="combo-window" />}
@@ -197,6 +253,25 @@ function App() {
         </>
       )}
 
+      {screen === 'stage' && (
+        <div className={`result-screen${status === 'clear' ? ' clear' : ''}`}>
+          <div className="result-hero-copy">
+            <span className="brand-pill">kaimin</span>
+            <h2>{status === 'clear' ? 'PERFECT CLEAR' : 'STAGE END'}</h2>
+            <p className="title-sub">ステージ {stage} / {TOTAL_STAGES} 終了</p>
+          </div>
+          <div className="result-summary">
+            <p>ステージスコア: {finalScore}</p>
+            <p className="final-score">累計スコア: {total + finalScore}</p>
+          </div>
+          {rankingError && <p className="skip-text">{rankingError}</p>}
+          <div className="result-buttons">
+            <button className="start-button primary" onClick={handleNext}>{stage === TOTAL_STAGES ? '最終結果へ' : '次のステージへ'}</button>
+            {stage < TOTAL_STAGES && <button className="start-button" onClick={handleSuspend}>中断する</button>}
+          </div>
+        </div>
+      )}
+
       {screen === 'result' && (
         <div className={`result-screen${status === 'clear' ? ' clear' : ''}`}>
           <div className="result-hero-copy">
@@ -205,7 +280,7 @@ function App() {
             <p className="title-sub">スコアを確認して、ランキングに登録しよう</p>
           </div>
           <div className="result-summary">
-            <p className="final-score">Final Score: {finalScore}</p>
+            <p className="final-score">Final Score: {total + finalScore}</p>
             {status === 'clear' && (
               <div className="dance-zone">
                 <span className="dance-sheep">🐑</span>
